@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: schoolpaz-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-schoolpaz}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-schoolpaz}
+      POSTGRES_DB: ${POSTGRES_DB:-schoolpaz}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - schoolpaz-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-schoolpaz}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: schoolpaz-mongodb
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER:-schoolpaz}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-schoolpaz}
+      MONGO_INITDB_DATABASE: ${MONGODB_DB:-schoolpaz}
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - schoolpaz-network
+    restart: unless-stopped
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO Object Storage (S3 compatible)
+  minio:
+    image: minio/minio:latest
+    container_name: schoolpaz-minio
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-schoolpaz}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-schoolpaz}
+    volumes:
+      - minio_data:/data
+    networks:
+      - schoolpaz-network
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Create initial buckets in MinIO
+  minio-init:
+    image: minio/mc:latest
+    container_name: schoolpaz-minio-init
+    depends_on:
+      - minio
+    networks:
+      - schoolpaz-network
+    entrypoint: >
+      /bin/sh -c "
+      sleep 10 &&
+      /usr/bin/mc config host add myminio http://minio:9000 ${MINIO_ROOT_USER:-schoolpaz} ${MINIO_ROOT_PASSWORD:-schoolpaz} &&
+      /usr/bin/mc mb --ignore-existing myminio/${MINIO_BUCKET:-schoolpaz} &&
+      /usr/bin/mc policy set public myminio/${MINIO_BUCKET:-schoolpaz} &&
+      exit 0
+      "
+
+  # MailHog for email testing
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: schoolpaz-mailhog
+    ports:
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"
+      - "${MAILHOG_UI_PORT:-8025}:8025"
+    networks:
+      - schoolpaz-network
+    restart: unless-stopped
+
+networks:
+  schoolpaz-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  minio_data:
