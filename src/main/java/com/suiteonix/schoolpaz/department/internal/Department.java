@@ -2,9 +2,8 @@ package com.suiteonix.schoolpaz.department.internal;
 
 import com.suiteonix.schoolpaz.department.DepartmentId;
 import com.suiteonix.schoolpaz.kernel.interfaces.DomainObject;
-import jakarta.persistence.EmbeddedId;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
+import com.suiteonix.schoolpaz.school.internal.School;
+import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -21,4 +20,13 @@ public class Department extends Auditable<Department> {
     @EmbeddedId
     DepartmentId id;
 
+    @Column(name = "name", nullable = false)
+    String name;
+
+    @Column(name = "description", columnDefinition = "TEXT")
+    String description;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "school_id", referencedColumnName = "id")
+    School school;
 }
